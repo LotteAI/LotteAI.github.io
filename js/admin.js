@@ -3,6 +3,8 @@
  */
 
 let surveyResponses = [];
+let allResponses = []; // 원본 전체 데이터 보관용
+let selectedDateFilter = 'all'; // 현재 선택된 날짜 필터 상태 ('all' | '6/11' 등)
 let currentFeedbackTab = 'q8'; // 8번 문항으로 기본 탭 설정
 let adminPassword = '';
 
@@ -101,14 +103,15 @@ async function verifyAdmin() {
     // 인증 성공 처리
     adminPassword = pw;
     sessionStorage.setItem("admin_pw", pw);
-    surveyResponses = responses;
+    allResponses = responses;
     
     // UI 전환
     loginOverlay.classList.remove("active");
     adminContainer.style.display = "flex";
     
-    // 대시보드 그리기
-    renderDashboard();
+    // 날짜 필터 적용 및 대시보드 그리기
+    selectedDateFilter = 'all';
+    applyDateFilter();
     
   } catch (error) {
     console.error("인증 실패:", error);
@@ -130,6 +133,75 @@ async function verifyAdmin() {
   }
 }
 
+// 날짜 필터 적용
+function applyDateFilter() {
+  if (selectedDateFilter === 'all') {
+    surveyResponses = [...allResponses];
+  } else {
+    surveyResponses = allResponses.filter(r => r.eduDate === selectedDateFilter);
+  }
+  
+  // 날짜 필터 버튼 목록 업데이트
+  renderDateFilters();
+  
+  // 대시보드 그리기
+  renderDashboard();
+}
+
+// 날짜 필터 버튼 렌더링
+function renderDateFilters() {
+  const container = document.getElementById("dateFilterContainer");
+  if (!container) return;
+  container.innerHTML = "";
+  
+  // allResponses에서 고유한 eduDate 목록 추출 및 정렬
+  const dates = [];
+  allResponses.forEach(r => {
+    if (r.eduDate && !dates.includes(r.eduDate)) {
+      dates.push(r.eduDate);
+    }
+  });
+  
+  // 날짜 순 정렬 (간단한 문자열 정렬 혹은 날짜형태 파싱 정렬)
+  dates.sort((a, b) => {
+    const getNum = str => {
+      const match = str.match(/(\d+)\/(\d+)/);
+      if (match) {
+        return parseInt(match[1]) * 100 + parseInt(match[2]);
+      }
+      return 0;
+    };
+    return getNum(a) - getNum(b);
+  });
+  
+  // 1. 누계 버튼 생성
+  const allBtn = document.createElement("button");
+  allBtn.className = `date-filter-btn ${selectedDateFilter === 'all' ? 'active' : ''}`;
+  allBtn.innerText = "누계";
+  allBtn.onclick = () => {
+    selectedDateFilter = 'all';
+    applyDateFilter();
+  };
+  container.appendChild(allBtn);
+  
+  // 2. 일자별 버튼 생성
+  dates.forEach(date => {
+    const btn = document.createElement("button");
+    btn.className = `date-filter-btn ${selectedDateFilter === date ? 'active' : ''}`;
+    btn.innerText = date;
+    btn.onclick = () => {
+      selectedDateFilter = date;
+      applyDateFilter();
+    };
+    container.appendChild(btn);
+  });
+  
+  // Lucide 아이콘 갱신 (만약 아이콘이 들어가게 바뀔 것에 대비)
+  if (window.lucide) {
+    window.lucide.createIcons();
+  }
+}
+
 // 대시보드 데이터 새로고침
 async function loadDashboardData() {
   const refreshBtn = document.querySelector(".btn-refresh");
@@ -141,11 +213,11 @@ async function loadDashboardData() {
 
   try {
     const responses = await window.dbService.getResponses(adminPassword);
-    surveyResponses = responses;
+    allResponses = responses;
     selectedResponseIds = []; // 선택 상태 초기화
     document.getElementById("selectAllCheckbox").checked = false;
     updateDeleteSelectedButton();
-    renderDashboard();
+    applyDateFilter();
   } catch (error) {
     console.error("새로고침 실패:", error);
     alert("데이터를 새로 불러오는 데 실패했습니다.");
